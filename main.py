@@ -19,3 +19,4 @@ app.include_router(chat.router)
 @app.get("/")
 async def root():
     return {"message": "Cyber Chatbot API is running with Groq + LLaMA 3!"}
+
