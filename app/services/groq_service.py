@@ -1,7 +1,10 @@
 import httpx
-from app.config import GROQ_API_KEY, GROQ_API_URL, GROQ_MODEL
 from app.utils.prompt import system_prompt_groq
+from app.config import settings
 from app.utils.text_utils import clean_output
+
+GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions"
+
 
 async def get_groq_response(message: str, history: list):
     messages = [{"role": "system", "content": system_prompt_groq.strip()}]
@@ -9,10 +12,8 @@ async def get_groq_response(message: str, history: list):
     if history:
         messages.extend(history)
 
-    messages.append({"role": "user", "content": message.strip()})
-
     payload = {
-        "model": GROQ_MODEL,
+        "model": "llama-3.3-70b-versatile",
         "messages": messages,
         "temperature": 0.7,
         "top_p": 0.9,
@@ -20,17 +21,18 @@ async def get_groq_response(message: str, history: list):
     }
 
     headers = {
-        "Authorization": f"Bearer {GROQ_API_KEY}",
+        "Authorization": f"Bearer {settings.GROQ_API_KEY}",
         "Content-Type": "application/json"
     }
+    
+    print("PAYLOAD:", payload)
 
-    async with httpx.AsyncClient() as client:
+    async with httpx.AsyncClient(timeout=10.0) as client:
         response = await client.post(GROQ_API_URL, headers=headers, json=payload)
 
-    # Debug first (always safe to see raw response)
-    # print("Groq raw response:", response.text)
+        print("Groq STATUS:", response.status_code)
+        print("Groq BODY:", response.text)
 
-    # Ensure no silent failures
     response.raise_for_status()
     data = response.json()
 

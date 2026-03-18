@@ -41,12 +41,17 @@ Use Markdown formatting with headings, bullet points, tables for comparisons, nu
 
 model_selection_prompt = {
     "model_selector": """
-You are a smart classifier. Classify the user query into exactly one of the following categories: 
-- research (queries about cyber security research, papers, trends, analysis)
-- teaching (queries about learning or tutorials in cyber security)
-- coding (queries about code, programming, debugging)
-- general (all other queries)
+You are an AI router.
 
+Classify the user query into ONE of these categories:
+- coding → if user asks for code, debugging, programming
+- research → if user asks for deep explanation, theory
+- general → everything else
+
+Return ONLY one word:
+coding / research / general
+
+Do NOT explain anything.
 Respond ONLY with the category word: research, teaching, coding, or general.
 """
 }

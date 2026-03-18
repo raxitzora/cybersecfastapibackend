@@ -1,46 +1,68 @@
 from fastapi import APIRouter, HTTPException
 from app.models import ChatRequest, ChatResponse
 from app.services.groq_service import get_groq_response
-from app.services.metallama_service import get_metallama_response
 from app.services.deepseek_service import get_deepseek_response
-from app.utils.selection import select_model  # <--- import here
+from app.utils.selection import select_model
+from app.db.crud import (
+    get_chat_history,
+    save_message,
+    get_memory,
+    save_memory
+)
+from app.utils.memory import summarize_history  # create this file
 
 router = APIRouter()
+
 
 @router.post("/chat", response_model=ChatResponse)
 async def chat_router(request: ChatRequest):
     try:
-        # await select_model since it's async
-        model = await select_model(request.message)
+        # 1. Fetch history
+        history = await get_chat_history(request.user_id)
 
-        if model == "meta":
-            reply = await get_metallama_response(request.message, request.history)
-        elif model == "deepseek":
-            reply = await get_deepseek_response(request.message, request.history)
-        else:
-            reply = await get_groq_response(request.message, request.history)
+        # 2. Fetch long-term memory
+        memory = await get_memory(request.user_id)
+        print("MEMORY:", memory)
 
-        return ChatResponse(reply=reply, model_used=model)
+        # 3. Inject memory (IMPORTANT)
+        if memory:
+            history.insert(0, {
+                "role": "system",
+                "content": f"Previous context about user: {memory}"
+            })
 
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        # 4. Add current user message
+        history.append({
+            "role": "user",
+            "content": request.message
+        })
 
+        # 5. Router decision
+        model_type = await select_model(request.message)
+        print("ROUTER DECISION:", model_type)
 
+        # 6. Call correct model with fallback
+        try:
+            if model_type == "coding":
+                reply = await get_deepseek_response(request.message, history)
+            else:
+                reply = await get_groq_response(request.message, history)
 
-# Keep direct routes for manual testing
-@router.post("/meta", response_model=ChatResponse)
-async def chat_meta(request: ChatRequest):
-    try:
-        reply = await get_metallama_response(request.message, request.history)
-        return ChatResponse(reply=reply)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        except Exception as e:
+            print("Model failed, fallback to Groq:", e)
+            reply = await get_groq_response(request.message, history)
 
+        # 7. Save messages
+        await save_message(request.user_id, "user", request.message)
+        await save_message(request.user_id, "assistant", reply)
 
-@router.post("/deepseek", response_model=ChatResponse)
-async def chat_deepseek(request: ChatRequest):
-    try:
-        reply = await get_deepseek_response(request.message, request.history)
-        return ChatResponse(reply=reply)
+        # 8. Update memory (IMPORTANT)
+        if len(history) >= 6:
+            summary = await summarize_history(history)
+            await save_memory(request.user_id, summary)
+
+        # 9. Return response
+        return ChatResponse(reply=reply, model_used=model_type)
+
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

@@ -1,8 +1,9 @@
 import httpx
-import json
-from app.config import DEEPSEEK_API_KEY, DEEPSEEK_API_URL, DEEPSEEK_MODEL
+from app.config import settings
 from app.utils.prompt import system_prompt_deepseek
 from app.utils.text_utils import clean_output
+
+DEEPSEEK_API_URL = "https://api.deepseek.com"
 
 async def get_deepseek_response(message: str, history: list):
     messages = [{"role": "system", "content": system_prompt_deepseek.strip()}]
@@ -10,38 +11,30 @@ async def get_deepseek_response(message: str, history: list):
     if history:
         messages.extend(history)
 
-    messages.append({"role": "user", "content": message.strip()})
-
     payload = {
-        "model": DEEPSEEK_MODEL,
+        "model": "deepseek-coder",  # ✅ HARDCODED
         "messages": messages,
         "temperature": 0.7,
-        "top_p": 0.9,
-        "max_tokens": 2048
+        "max_tokens": 1024
     }
 
     headers = {
-        "Authorization": f"Bearer {DEEPSEEK_API_KEY}",
-        "Content-Type": "application/json",
-        "HTTP-Referer": "http://localhost:8000",   # change in production
-        "X-Title": "MyFastAPIApp"
+        "Authorization": f"Bearer {settings.DEEPSEEK_API_KEY}",
+        "Content-Type": "application/json"
     }
 
-    async with httpx.AsyncClient() as client:
+    async with httpx.AsyncClient(timeout=10.0) as client:
         response = await client.post(
             DEEPSEEK_API_URL,
             headers=headers,
-            data=json.dumps(payload)
+            json=payload  # ✅ correct way
         )
 
-    # Debug print BEFORE parsing
-    # print("DeepSeek raw response:", response.text)
+        print("DeepSeek STATUS:", response.status_code)
+        print("DeepSeek BODY:", response.text)
 
-    try:
-        response.raise_for_status()
-        data = response.json()
-    except Exception:
-        raise RuntimeError(f"Non-JSON response: {response.text}")
+    response.raise_for_status()
+    data = response.json()
 
     if "choices" not in data or not data["choices"]:
         raise ValueError(f"Unexpected response: {data}")
